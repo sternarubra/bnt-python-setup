@@ -1,0 +1,43 @@
+# Copyright (C) 2020 by Landmark Acoustics LLC
+
+pname=$1
+
+mkdir -p ${pname}
+cd ${pname}
+
+git init
+
+echo ${pname} > README
+echo "A python package" >> README
+
+TEMPLATE_DIR=${HOME}/Source/LAC/Templates
+cp ${TEMPLATE_DIR}/license.txt LICENSE
+cp ${TEMPLATE_DIR}/git_ignore.ini .gitignore
+cp ${TEMPLATE_DIR}/Python/pyproject.toml .
+cp ${TEMPLATE_DIR}/Python/setup.cfg .
+cp ${TEMPLATE_DIR}/Python/dummy_setup.py setup.py
+
+perl -pi -e "s|replaceWithPackageName|${pname}|g" setup.cfg
+
+mkdir src/${pname}
+touch src/${pname}/__init__.py
+
+mkdir tests
+touch tests/conftest.py
+touch tests/__init__.py
+
+sphinx-quickstart sphinx \
+	-p replaceWithPackageName \
+	-a replaceWithAuthorName \
+	-r replaceWithReleaseNumber \
+	--ext-autodoc \
+	--ext-doctest \
+	--ext-intersphinx \
+	--extensions=numpydoc,sphinx.ext.autosummary
+
+python3 -m build --no-isolation .
+
+python3 -m pip install --editable .
+
+git add -A .
+git commit -m "initialized project ${pname}"
