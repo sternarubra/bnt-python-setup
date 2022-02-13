@@ -28,6 +28,7 @@ AUTHOR_NAME=Anonymous
 EMAIL_ADDRESS=an@nymo.us
 VERSION=0.0.1
 REPOSITORY=
+MAKE_DOCS=
 PACKAGE_NAME=$1
 shift
 
@@ -41,6 +42,10 @@ while (( "$#" )); do
 				echo "Error: Argument for $1 is missing" >&2
 				exit 1
 			fi
+			shift
+			;;
+		-d|--doc|--documents)
+			MAKE_DOCS=Yes
 			shift
 			;;
 		-e|--email)
@@ -94,58 +99,82 @@ git init
 
 python3 -m venv --symlinks env
 source env/bin/activate
-python3 -m pip install --upgrade \
-		pip \
-		build \
-		numpydoc \
-		pytest \
-		sphinx \
-		setuptools \
-		wheel
+pip install --upgrade \
+	pip \
+	build \
+	pytest \
+	pytest-cov \
+	pytest-mock \
+	setuptools \
+	wheel
 
 # create the package structure
 
-mkdir src
-mkdir src/${PACKAGE_NAME}
-touch src/${PACKAGE_NAME}/__init__.py
-echo "print('hello, world!')" > src/${PACKAGE_NAME}/__main__.py
-echo "" >> src/${PACKAGE_NAME}/__main__.py
-
-mkdir tests
-touch tests/conftest.py
-touch tests/__init__.py
-
 TEMPLATE_DIR=${CMD_DIR}/templates
 
-TEMPLATE_FILES=$(find ${TEMPLATE_DIR} -type f)
+mkdir -p src/${PACKAGE_NAME} tests
+
+cp ${TEMPLATE_DIR}/* .
+mv gitignore .gitignore
+cp ${TEMPLATE_DIR}/src/* src/${PACKAGE_NAME}
+cp ${TEMPLATE_DIR}/tests/* tests
+
+if [[ -n $MAKE_DOCS ]]; then
+	cp ${TEMPLATE_DIR}/sphinx/index.rst .
+fi
+
+TEMPLATE_FILES=$(find . \
+					  -path ./env -prune -o \
+					  -path ./.git -prune -o \
+					  -type f -print)
+
 
 for f in $TEMPLATE_FILES; do
-	cp $f ${f#$TEMPLATE_DIR/}
-	perl -pi -e "s|replaceWithPackageName|${PACKAGE_NAME}|g" ${f#$TEMPLATE_DIR/}
-	perl -pi -e "s|replaceWithAuthorName|${AUTHOR_NAME}|g" ${f#$TEMPLATE_DIR/}
-	perl -pi -e "s|replaceWithEmail|${EMAIL_ADDRESS}|g" ${f#$TEMPLATE_DIR/}
-	perl -pi -e "s|replaceWithVersionNumber|${VERSION}|g" ${f#$TEMPLATE_DIR/}
-	perl -pi -e "s|replaceWithRepository|${REPOSITORY}|g" ${f#$TEMPLATE_DIR/}
+	for p in "PackageName|${PACKAGE_NAME}" \
+				 "AuthorName|${AUTHOR_NAME}" \
+				 "Email|${EMAIL_ADDRESS}" \
+				 "VersionNumber|${VERSION}" \
+				 "Repository|${REPOSITORY}"; do
+		perl -pi -e "s|replaceWith${p}|g" $f
+	done
 done
 
-sphinx-quickstart sphinx \
-				  --sep \
-				  -l en \
-				  -p ${PACKAGE_NAME} \
-				  -a "${AUTHOR_NAME}" \
-				  -r "${VERSION}" \
-				  --ext-autodoc \
-				  --ext-doctest \
-				  --ext-intersphinx \
-				  --extensions=numpydoc,sphinx.ext.autosummary
+python -m build --no-isolation .
 
-python3 -m build --no-isolation .
+python -m pip install --editable .
 
-python3 -m pip install --editable .
+if [[ -n $MAKE_DOCS ]]; then
 
-python3 -m pip freeze > REQUIREMENTS.txt
+	DOC_DIR=sphinx
 
-python3 setup.py build_sphinx
+	pip install --upgrade \
+		numpydoc \
+		sphinx
+
+	sphinx-quickstart ${DOC_DIR} \
+					  --no-sep \
+					  -l en \
+					  -p ${PACKAGE_NAME} \
+					  -a "${AUTHOR_NAME}" \
+					  -r "${VERSION}" \
+					  --ext-autodoc \
+					  --ext-doctest \
+					  --ext-intersphinx \
+					  --extensions=numpydoc,sphinx.ext.autosummary
+
+	mv index.rst ${DOC_DIR}
+
+	echo \
+		$(cat \
+			  ${DOC_DIR}/conf.py \
+			  ${TEMPLATE_DIR}/sphinx/extras_for_conf.py) \
+		> ${DOC_DIR}/conf.py
+
+	python setup.py build_sphinx
+
+fi
+
+python -m pip freeze > REQUIREMENTS.txt
 
 deactivate
 
